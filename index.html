@@ -3,7 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>P2P Verifier</title>
+    <title>პარტნიორი — P2P Verifier</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wght@300;400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+      *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+      body{background:#080b14;color:#e8e4dc;font-family:'Noto Sans Georgian',sans-serif;}
+      ::-webkit-scrollbar{width:4px;}
+      ::-webkit-scrollbar-track{background:#080b14;}
+      ::-webkit-scrollbar-thumb{background:#3a4050;border-radius:2px;}
+      input,textarea,select,button{font-family:'Noto Sans Georgian',sans-serif;}
+      @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+      @keyframes pop{0%{transform:scale(.85);opacity:0;}80%{transform:scale(1.04);}100%{transform:scale(1);opacity:1;}}
+      .fade-up{animation:fadeUp .3s ease both;}
+      .pop{animation:pop .3s ease both;}
+      .leaflet-container{font-family:'Noto Sans Georgian',sans-serif;}
+    </style>
   </head>
   <body>
     <div id="root"></div>
