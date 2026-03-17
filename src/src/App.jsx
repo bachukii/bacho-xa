@@ -27,23 +27,31 @@ function StepBar({ current }) {
 }
 
 function FileUpload({ label, accept, file, onChange }) {
-  const ref = useRef();
-  return (
-    <div onClick={() => ref.current.click()} style={{
-      border: "1.5px dashed #d1d5db", borderRadius: 12, padding: "1.25rem",
-      textAlign: "center", cursor: "pointer", background: "#f9fafb", marginBottom: "1rem"
-    }}>
-      <input ref={ref} type="file" accept={accept} style={{ display: "none" }} onChange={e => onChange(e.target.files[0])} />
-      {file
-        ? <p style={{ margin: 0, fontSize: 13, color: "#065f46" }}>✓ {file.name}</p>
-        : <div>
-            <p style={{ margin: "0 0 3px", fontSize: 20, color: "#9ca3af" }}>+</p>
-            <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>{label}</p>
-          </div>
-      }
-    </div>
-  );
-}
+  const callClaude = async (file, prompt) => {
+    const { base64, mediaType } = await fileToBase64(file);
+    const contentItem = mediaType === "application/pdf"
+      ? { type: "document", source: { type: "base64", media_type: mediaType, data: base64 } }
+      : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
+    const res = await fetch("/.netlify/functions/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1500,
+        messages: [{ role: "user", content: [contentItem, { type: "text", text: prompt }] }]
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const text = data.content.map(c => c.text || "").join("");
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) throw new Error("პასუხი: " + text.substring(0, 100));
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch(e) {
+      throw new Error("JSON შეცდომა: " + jsonMatch[0].substring(0, 80));
+    }
+  };
 
 function ListingCard({ listing }) {
   return (
