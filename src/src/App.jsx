@@ -12,15 +12,11 @@ const C = {
 };
 
 const DISTRICT_COORDS = {
-  "ვაკე":       {lat:41.7225,lng:44.7614},
-  "საბურთალო":  {lat:41.7389,lng:44.7553},
-  "დიდუბე":     {lat:41.7558,lng:44.7717},
-  "გლდანი":     {lat:41.7792,lng:44.7842},
-  "ნაძალადევი": {lat:41.7447,lng:44.7903},
-  "მთაწმინდა":  {lat:41.6940,lng:44.7890},
-  "ისანი":      {lat:41.6862,lng:44.8124},
-  "სამგორი":    {lat:41.6756,lng:44.8321},
-  "თბილისი":    {lat:41.7151,lng:44.8271},
+  "ვაკე":{lat:41.7225,lng:44.7614},"საბურთალო":{lat:41.7389,lng:44.7553},
+  "დიდუბე":{lat:41.7558,lng:44.7717},"გლდანი":{lat:41.7792,lng:44.7842},
+  "ნაძალადევი":{lat:41.7447,lng:44.7903},"მთაწმინდა":{lat:41.6940,lng:44.7890},
+  "ისანი":{lat:41.6862,lng:44.8124},"სამგორი":{lat:41.6756,lng:44.8321},
+  "თბილისი":{lat:41.7151,lng:44.8271},
 };
 
 const REGIONS = ["თბილისი","ვაკე","საბურთალო","დიდუბე","გლდანი","ნაძალადევი","მთაწმინდა","ისანი","სამგორი","რუსთავი","ბათუმი","ქუთაისი","გორი","ზუგდიდი","ფოთი","სხვა"];
@@ -103,17 +99,20 @@ function MapView({listings,onDetail}){
     window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OSM"}).addTo(map);
     const icon=window.L.divIcon({html:'<div style="width:12px;height:12px;background:#c9a84c;border-radius:50%;border:2px solid #fff;box-shadow:0 0 8px rgba(201,168,76,.7)"></div>',className:"",iconSize:[12,12]});
     listings.filter(l=>l.lat&&l.lng).forEach(l=>{
-      const m=window.L.marker([l.lat,l.lng],{icon}).addTo(map);
+      const coords=DISTRICT_COORDS[l.region];
+      const lt=l.lat||coords?.lat;
+      const lg=l.lng||coords?.lng;
+      if(!lt||!lg)return;
+      const m=window.L.marker([lt,lg],{icon}).addTo(map);
       m.bindPopup(`<b>${l.title}</b><br/>${l.price}${l.currency||"$"}`);
       m.on("click",()=>onDetail&&onDetail(l));
     });
     return()=>map.remove();
   },[listings]);
-  return <div ref={ref} style={{height:"calc(100vh - 120px)",borderRadius:0}}/>;
+  return <div ref={ref} style={{height:"calc(100vh - 120px)"}}/>;
 }
 
 function ListingCard({l,onClick}){
-  const coords=DISTRICT_COORDS[l.region]||DISTRICT_COORDS[l.district]||null;
   return(
     <div onClick={onClick} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:"14px 16px",marginBottom:"0.75rem",cursor:"pointer",transition:"transform .2s,box-shadow .2s"}}
       onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 12px 32px rgba(0,0,0,.45)";}}
@@ -138,8 +137,7 @@ function ListingCard({l,onClick}){
           {l.description&&<p style={{margin:0,fontSize:11,color:C.dim}}>{l.description.slice(0,60)}{l.description.length>60?"...":""}</p>}
         </div>
         <div style={{textAlign:"right",minWidth:80,marginLeft:10}}>
-          <p style={{margin:"0 0 4px",fontWeight:700,fontSize:16,color:C.gold}}>{l.price}{l.currency||"$"}</p>
-          {l.views>0&&<p style={{margin:0,fontSize:10,color:C.dim}}>👁 {l.views}</p>}
+          <p style={{margin:"0 0 4px",fontWeight:700,fontSize:16,color:C.gold}}>{l.price}$</p>
         </div>
       </div>
       {l.cadastral_code&&(
@@ -152,7 +150,7 @@ function ListingCard({l,onClick}){
 }
 
 function DetailView({l,onBack}){
-  const coords=DISTRICT_COORDS[l.region]||DISTRICT_COORDS[l.district]||null;
+  const coords=DISTRICT_COORDS[l.region||l.district]||null;
   return(
     <div style={{maxWidth:560,margin:"0 auto",padding:"1rem"}}>
       <button onClick={onBack} style={btn({marginBottom:"1rem",padding:"6px 12px",fontSize:13})}>← უკან</button>
@@ -166,7 +164,7 @@ function DetailView({l,onBack}){
         <TypeChip type={l.sale_type||"იყიდება"}/>
       </div>
       <h2 style={{margin:"0 0 6px",fontSize:20,fontWeight:700,color:C.text}}>{l.title}</h2>
-      <p style={{margin:"0 0 12px",fontSize:22,fontWeight:700,color:C.gold}}>{l.price}{l.currency||"$"}</p>
+      <p style={{margin:"0 0 12px",fontSize:22,fontWeight:700,color:C.gold}}>{l.price}$</p>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
         {[["📍 რაიონი",l.region||l.district],["🏢 ტიპი",l.type],["📐 ფართი",`${l.area}მ²`],["🏗 სართული",l.floor||"—"],["🛏 ოთახები",l.rooms||"—"],["📞 ტელეფონი",l.phone||"—"]].map(([k,v])=>(
           <div key={k} style={{background:C.surface2,borderRadius:8,padding:"8px 10px"}}>
@@ -205,16 +203,14 @@ function AlertsView({listings}){
   return(
     <div style={{maxWidth:560,margin:"0 auto",padding:"1rem"}}>
       <h2 style={{margin:"0 0 6px",fontSize:18,fontWeight:600,color:C.text}}>🔔 სიგნალები</h2>
-      <p style={{margin:"0 0 16px",fontSize:12,color:C.muted}}>დააყენე ფილტრი — ახალი შესაბამისი განცხადება = შეტყობინება</p>
+      <p style={{margin:"0 0 16px",fontSize:12,color:C.muted}}>დააყენე ფილტრი — შესაბამისი განცხადება = შეტყობინება</p>
       <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"1rem",marginBottom:"1rem"}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <select value={filters.type} onChange={e=>setFilters(p=>({...p,type:e.target.value}))} style={inp}>
-            <option>ყველა</option>
-            {SALE_TYPES.map(t=><option key={t}>{t}</option>)}
+            <option>ყველა</option>{SALE_TYPES.map(t=><option key={t}>{t}</option>)}
           </select>
           <select value={filters.region} onChange={e=>setFilters(p=>({...p,region:e.target.value}))} style={inp}>
-            <option>ყველა</option>
-            {REGIONS.map(r=><option key={r}>{r}</option>)}
+            <option>ყველა</option>{REGIONS.map(r=><option key={r}>{r}</option>)}
           </select>
           <input placeholder="მაქს. ფასი ($)" value={filters.maxPrice} onChange={e=>setFilters(p=>({...p,maxPrice:e.target.value}))} style={inp}/>
           <input placeholder="მინ. ფართი (მ²)" value={filters.minArea} onChange={e=>setFilters(p=>({...p,minArea:e.target.value}))} style={inp}/>
@@ -223,7 +219,7 @@ function AlertsView({listings}){
           {saved?"✓ სიგნალი შენახულია":"🔔 სიგნალის შენახვა (10₾/თვე)"}
         </button>
       </div>
-      <p style={{fontSize:12,color:C.muted,marginBottom:8}}>შესაბამისი განცხადებები: <strong style={{color:C.gold}}>{matched.length}</strong></p>
+      <p style={{fontSize:12,color:C.muted,marginBottom:8}}>შესაბამისი: <strong style={{color:C.gold}}>{matched.length}</strong></p>
       {matched.map(l=><ListingCard key={l.id} l={l}/>)}
     </div>
   );
@@ -241,7 +237,7 @@ function StatsView({listings}){
     <div style={{maxWidth:560,margin:"0 auto",padding:"1rem"}}>
       <h2 style={{margin:"0 0 16px",fontSize:18,fontWeight:600}}>📊 სტატისტიკა</h2>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-        {[["სულ განცხადება",approved.length,C.gold],["საკადასტრო",withCad.length,C.teal],["საშ. ფასი",`${avgPrice}$`,C.blue],["დაზოგული",`${savedCommission}$`,C.green]].map(([l,v,c])=>(
+        {[["სულ განცხადება",approved.length,C.gold],["საკადასტრო",withCad.length,C.teal],["საშ. ფასი",`${avgPrice}$`,C.blue],["დაზოგული კომის.",`${savedCommission}$`,C.green]].map(([l,v,c])=>(
           <div key={l} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:11,padding:"14px 16px"}}>
             <div style={{fontSize:10,color:C.dim,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>{l}</div>
             <div style={{fontSize:24,fontWeight:700,color:c}}>{v}</div>
@@ -250,7 +246,7 @@ function StatsView({listings}){
       </div>
       <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:13,padding:"1rem",marginBottom:14}}>
         <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>📍 რაიონები</div>
-        {byRegion.map(d=>(
+        {byRegion.length===0?<p style={{color:C.muted,fontSize:12}}>მონაცემები არ არის</p>:byRegion.map(d=>(
           <div key={d.name} style={{marginBottom:8}}>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span>{d.name}</span><span style={{color:C.muted}}>{d.count}</span></div>
             <div style={{height:5,background:C.surface2,borderRadius:3,overflow:"hidden"}}>
@@ -274,7 +270,7 @@ function StatsView({listings}){
           </div>
         </div>
         <div style={{textAlign:"center",fontSize:12,color:C.muted}}>
-          <strong style={{color:C.teal}}>{withCad.length}</strong> საკადასტრო კოდით · <strong style={{color:C.green}}>{approved.length}</strong> ვერიფიც.
+          <strong style={{color:C.teal}}>{withCad.length}</strong> კადასტრი · <strong style={{color:C.green}}>{approved.length}</strong> ვერიფიც.
         </div>
       </div>
     </div>
@@ -293,8 +289,7 @@ function AdminView(){
     try{
       const res=await fetch("/.netlify/functions/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"get_pending",password:pass})});
       const data=await res.json();
-      if(data.error){setMsg(data.error);}
-      else{setPending(data);setAuth(true);}
+      if(data.error){setMsg(data.error);}else{setPending(data);setAuth(true);}
     }catch(e){setMsg(e.message);}
     setLoading(false);
   };
@@ -307,7 +302,8 @@ function AdminView(){
   if(!auth)return(
     <div style={{maxWidth:360,margin:"60px auto",padding:"1rem"}}>
       <h2 style={{margin:"0 0 16px",color:C.gold}}>🔐 ადმინ პანელი</h2>
-      <input type="password" placeholder="პაროლი" value={pass} onChange={e=>setPass(e.target.value)} style={inp}/>
+      <input type="password" placeholder="პაროლი" value={pass} onChange={e=>setPass(e.target.value)}
+        onKeyDown={e=>e.key==="Enter"&&login()} style={inp}/>
       {msg&&<p style={{color:C.red,fontSize:13,margin:"0 0 8px"}}>{msg}</p>}
       <button onClick={login} disabled={loading} style={btn({width:"100%",background:C.goldDim,border:`1px solid ${C.borderGold}`,color:C.gold})}>
         {loading?"...":"შესვლა"}
@@ -317,14 +313,19 @@ function AdminView(){
 
   return(
     <div style={{maxWidth:560,margin:"0 auto",padding:"1rem"}}>
-      <h2 style={{margin:"0 0 16px",color:C.gold}}>🔐 ადმინ · pending ({pending.length})</h2>
-      {pending.length===0&&<p style={{color:C.muted}}>განხილვადი განცხადება არ არის</p>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h2 style={{margin:0,color:C.gold}}>🔐 ადმინი</h2>
+        <span style={{background:C.redDim,color:C.red,padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700}}>pending: {pending.length}</span>
+      </div>
+      {pending.length===0&&<p style={{color:C.muted}}>განხილვადი განცხადება არ არის ✓</p>}
       {pending.map(l=>(
         <div key={l.id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px",marginBottom:"0.75rem"}}>
-          <p style={{fontWeight:600,marginBottom:4}}>{l.title}</p>
+          <p style={{fontWeight:600,marginBottom:4,color:C.text}}>{l.title}</p>
           <p style={{fontSize:12,color:C.muted,marginBottom:4}}>{l.region} · {l.type} · {l.area}მ² · {l.price}$</p>
-          <p style={{fontSize:12,color:C.muted,marginBottom:8}}>👤 {l.first_name} {l.last_name} · {l.personal_number} · {l.phone}</p>
+          <p style={{fontSize:12,color:C.muted,marginBottom:4}}>👤 {l.first_name} {l.last_name} · პ/ნ: {l.personal_number}</p>
+          <p style={{fontSize:12,color:C.muted,marginBottom:8}}>📞 {l.phone}</p>
           {l.cadastral_code&&<p style={{fontSize:11,color:C.teal,marginBottom:8}}>🗺 {l.cadastral_code}</p>}
+          {l.description&&<p style={{fontSize:11,color:C.dim,marginBottom:8}}>{l.description}</p>}
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>update(l.id,"approved")} style={btn({flex:1,background:C.greenDim,border:`1px solid ${C.greenBorder}`,color:C.green,fontWeight:600})}>✓ Approve</button>
             <button onClick={()=>update(l.id,"rejected")} style={btn({flex:1,background:C.redDim,border:"1px solid rgba(224,85,85,.3)",color:C.red})}>✗ Reject</button>
@@ -366,7 +367,7 @@ export default function App(){
     setLoading(false);
   },[]);
 
-  useEffect(()=>{if(tab==="feed"||tab==="map"||tab==="alerts"||tab==="stats")loadListings();},[tab]);
+  useEffect(()=>{if(["feed","map","alerts","stats"].includes(tab))loadListings();},[tab]);
 
   const fileToBase64=(file)=>new Promise((res,rej)=>{
     if(file.type.includes("pdf")){const r=new FileReader();r.onload=()=>res({base64:r.result.split(",")[1],mediaType:"application/pdf"});r.onerror=rej;r.readAsDataURL(file);return;}
@@ -383,7 +384,7 @@ export default function App(){
     if(data.error)throw new Error(data.error.message);
     const text=data.content.map(c=>c.text||"").join("");
     const jsonMatch=text.match(/\{[\s\S]*\}/);
-    if(!jsonMatch)throw new Error("AI პასუხი: "+text.substring(0,100));
+    if(!jsonMatch)throw new Error("AI პასუხი: "+text.substring(0,120));
     return JSON.parse(jsonMatch[0]);
   };
 
@@ -397,7 +398,14 @@ export default function App(){
     if(!idFile){setVerifyError("ატვირთეთ დოკუმენტი");return;}
     setVerifyLoading(true);setVerifyError("");
     try{
-      const r=await callClaude(idFile,`Georgian ID card or passport. Respond ONLY with JSON:\n{"isValidDocument":true,"firstName":"LATIN","lastName":"LATIN","firstNameGeo":"ქართული","lastNameGeo":"ქართული","personalNumber":"11digits"}`);
+      const r=await callClaude(idFile,
+        `This image shows a Georgian government-issued identity document submitted voluntarily by its owner for property registration verification purposes.
+
+Please read all visible text fields in the document and extract the data. Respond ONLY with the following JSON structure, nothing else:
+{"isValidDocument":true,"firstName":"latin first name","lastName":"latin last name","firstNameGeo":"georgian first name","lastNameGeo":"georgian last name","personalNumber":"11 digit number"}
+
+If the image is not a valid ID document or you cannot read it, respond with: {"isValidDocument":false}`
+      );
       setIdResult(r);
       if(!r.isValidDocument)setVerifyError("დოკუმენტი ვერ დადასტურდა");
     }catch(e){setVerifyError(e.message);}
@@ -408,7 +416,16 @@ export default function App(){
     if(!extractFile){setVerifyError("ატვირთეთ ამონაწერი");return;}
     setVerifyLoading(true);setVerifyError("");
     try{
-      const r=await callClaude(extractFile,`Georgian public registry extract (napr.gov.ge). May have multiple owners.\nFind if personal number "${form.personalNumber}" is listed.\nRespond ONLY with JSON:\n{"isValidDocument":true,"found":true,"ownerFirstName":"LATIN","ownerLastName":"LATIN","ownerFirstNameGeo":"ქართული","ownerLastNameGeo":"ქართული","ownerPersonalNumber":"11digits","cadastralCode":"CODE","allOwners":["სახელი გვარი"]}`);
+      const r=await callClaude(extractFile,
+        `This is a Georgian public property registry document (საჯარო რეესტრის ამონაწერი) from napr.gov.ge, submitted voluntarily for property ownership verification.
+
+The property may have multiple owners (თანასაკუთრება/co-ownership).
+
+Task: Find if the person with personal number "${form.personalNumber}" appears anywhere in this document as an owner or co-owner.
+
+Read all visible text and respond ONLY with this JSON, nothing else:
+{"isValidDocument":true,"found":true,"ownerFirstName":"latin first name","ownerLastName":"latin last name","ownerFirstNameGeo":"georgian first name","ownerLastNameGeo":"georgian last name","ownerPersonalNumber":"11 digit number","cadastralCode":"cadastral code","allOwners":["Full Name 1","Full Name 2"]}`
+      );
       setExtractResult(r);
       const idOk=idResult?.isValidDocument&&nameMatch(form.firstName,idResult.firstName,idResult.firstNameGeo)&&nameMatch(form.lastName,idResult.lastName,idResult.lastNameGeo)&&norm(idResult.personalNumber)===norm(form.personalNumber);
       const extractOk=r.isValidDocument&&r.found&&norm(r.ownerPersonalNumber)===norm(form.personalNumber);
@@ -435,7 +452,7 @@ export default function App(){
       if(!data.success)throw new Error(data.error||"შეცდომა");
       if(photos.length>0&&data.id){
         const urls=await Promise.all(photos.map(f=>uploadPhoto(f,data.id)));
-        await fetch("/.netlify/functions/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"update_listing",id:data.id,photos:urls})});
+        await fetch("/.netlify/functions/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"update_listing",id:data.id,photos:urls,status:"pending"})});
       }
       setSubmitted(true);setStep(4);
       showToast("✅ განცხადება გაგზავნილია!");
@@ -446,7 +463,6 @@ export default function App(){
   const resetSell=()=>{setStep(0);setForm({firstName:"",lastName:"",personalNumber:"",phone:""});setListing({title:"",price:"",area:"",floor:"",rooms:"",region:"თბილისი",type:"ბინა",saleType:"იყიდება",description:"",cadastral:""});setPhotos([]);setIdFile(null);setExtractFile(null);setIdResult(null);setExtractResult(null);setSubmitted(false);setVerifyError("");setTab("feed");};
 
   const idMatch=idResult?.isValidDocument&&nameMatch(form.firstName,idResult.firstName,idResult.firstNameGeo)&&nameMatch(form.lastName,idResult.lastName,idResult.lastNameGeo)&&norm(idResult.personalNumber)===norm(form.personalNumber);
-
   const filtered=listings.filter(l=>(filterRegion==="ყველა"||l.region===filterRegion)&&(filterType==="ყველა"||l.type===filterType)&&(filterSale==="ყველა"||(l.sale_type||"იყიდება")===filterSale));
 
   const TABS=[{id:"feed",icon:"🏠",label:"ლენტი"},{id:"map",icon:"🗺",label:"რუკა"},{id:"alerts",icon:"🔔",label:"სიგნალი"},{id:"post",icon:"➕",label:"დამატება"},{id:"stats",icon:"📊",label:"სტატ."},{id:"admin",icon:"🔐",label:"ადმინი"}];
@@ -458,16 +474,16 @@ export default function App(){
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,color:C.gold,lineHeight:1}}>პარტნიორი</div>
           <div style={{fontSize:8,color:C.dim,letterSpacing:2,textTransform:"uppercase"}}>P2P · Cadastral</div>
         </div>
-        <nav style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+        <nav style={{display:"flex",gap:2,flexWrap:"wrap"}}>
           {TABS.map(t=>(
-            <button key={t.id} onClick={()=>{setTab(t.id);setDetail(null);}} style={{padding:"5px 8px",borderRadius:7,fontSize:11,border:`1px solid ${tab===t.id?C.gold:C.border}`,background:tab===t.id?C.goldDim:"transparent",color:tab===t.id?C.gold:C.muted,cursor:"pointer"}}>
+            <button key={t.id} onClick={()=>{setTab(t.id);setDetail(null);}} style={{padding:"5px 7px",borderRadius:7,fontSize:11,border:`1px solid ${tab===t.id?C.gold:C.border}`,background:tab===t.id?C.goldDim:"transparent",color:tab===t.id?C.gold:C.muted,cursor:"pointer"}}>
               {t.icon} {t.label}
             </button>
           ))}
         </nav>
       </header>
 
-      {toast&&<div className="pop" style={{position:"fixed",top:62,left:"50%",transform:"translateX(-50%)",zIndex:200,background:C.surface,border:`1px solid ${C.borderGold}`,padding:"10px 18px",borderRadius:10,fontWeight:600,fontSize:13,boxShadow:"0 8px 28px rgba(0,0,0,.5)",whiteSpace:"nowrap",color:C.text}}>{toast}</div>}
+      {toast&&<div style={{position:"fixed",top:62,left:"50%",transform:"translateX(-50%)",zIndex:200,background:C.surface,border:`1px solid ${C.borderGold}`,padding:"10px 18px",borderRadius:10,fontWeight:600,fontSize:13,boxShadow:"0 8px 28px rgba(0,0,0,.5)",whiteSpace:"nowrap",color:C.text}}>{toast}</div>}
 
       {tab==="feed"&&!detail&&(
         <div style={{maxWidth:560,margin:"0 auto",padding:"1rem"}}>
@@ -551,7 +567,7 @@ export default function App(){
               <div style={{background:C.greenDim,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"10px 14px",marginBottom:"1rem",fontSize:13,color:C.green,fontWeight:600}}>✓ ვერიფიკაცია გავლილია</div>
               {extractResult?.allOwners?.length>1&&<div style={{background:C.blueDim,border:"1px solid rgba(91,157,224,.3)",borderRadius:8,padding:"8px 12px",marginBottom:"1rem",fontSize:12,color:C.blue}}>თანამფლობელები: {extractResult.allOwners.join(", ")}</div>}
               <p style={{fontSize:12,color:C.dim,margin:"0 0 8px"}}>* სავალდებულო</p>
-              {[["title","* სათაური"],["price","* ფასი"],["area","* ფართი (მ²)"],["floor","სართული"],["rooms","ოთახები"],["cadastral","საკადასტრო კოდი"]].map(([key,ph])=>(
+              {[["title","* სათაური"],["price","* ფასი ($)"],["area","* ფართი (მ²)"],["floor","სართული"],["rooms","ოთახები"],["cadastral","საკადასტრო კოდი"]].map(([key,ph])=>(
                 <input key={key} placeholder={ph} value={listing[key]} onChange={e=>setListing(l=>({...l,[key]:e.target.value}))} style={inp}/>
               ))}
               <select value={listing.saleType} onChange={e=>setListing(l=>({...l,saleType:e.target.value}))} style={inp}>
