@@ -1,21 +1,19 @@
-const { createClient } = require("@supabase/supabase-js");
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
-
 exports.handler = async (event) => {
+  const SUPA_URL = process.env.SUPABASE_URL;
+  const SUPA_KEY = process.env.SUPABASE_SERVICE_KEY;
+
   if (event.httpMethod === "GET") {
-    const { data, error } = await supabase
-      .from("listings")
-      .select("*")
-      .eq("status", "approved")
-      .order("created_at", { ascending: false });
+    const res = await fetch(`${SUPA_URL}/rest/v1/listings?status=eq.approved&order=created_at.desc`, {
+      headers: {
+        "apikey": SUPA_KEY,
+        "Authorization": `Bearer ${SUPA_KEY}`,
+      }
+    });
+    const data = await res.json();
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(error ? [] : data),
+      body: JSON.stringify(Array.isArray(data) ? data : []),
     };
   }
 
@@ -23,11 +21,22 @@ exports.handler = async (event) => {
     const body = JSON.parse(event.body);
 
     if (body.action === "save_listing") {
-      const { error } = await supabase.from("listings").insert([body.data]);
+      const res = await fetch(`${SUPA_URL}/rest/v1/listings`, {
+        method: "POST",
+        headers: {
+          "apikey": SUPA_KEY,
+          "Authorization": `Bearer ${SUPA_KEY}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify(body.data),
+      });
+      const ok = res.status >= 200 && res.status < 300;
+      const text = ok ? "" : await res.text();
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ success: !error, error: error?.message }),
+        body: JSON.stringify({ success: ok, error: text }),
       };
     }
 
