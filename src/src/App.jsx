@@ -73,11 +73,21 @@ export default function App() {
   const norm = s => (s || "").trim().toLowerCase();
 
   const fileToBase64 = file => new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result.split(",")[1]);
-    r.onerror = rej;
-    r.readAsDataURL(file);
-  });
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    const max = 1200;
+    let w = img.width, h = img.height;
+    if (w > max) { h = h * max / w; w = max; }
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    res(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+    URL.revokeObjectURL(url);
+  };
+  img.onerror = rej;
+  img.src = url;
+});
 
   const callClaude = async (file, prompt) => {
     const base64 = await fileToBase64(file);
