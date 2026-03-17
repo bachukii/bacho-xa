@@ -72,6 +72,9 @@ export default function App() {
 
   const norm = s => (s || "").trim().toLowerCase();
 
+  const nameMatch = (formVal, latin, geo) =>
+    norm(formVal) === norm(latin) || norm(formVal) === norm(geo);
+
   const fileToBase64 = (file) => new Promise((res, rej) => {
     if (file.type.includes("pdf")) {
       const r = new FileReader();
@@ -135,8 +138,8 @@ export default function App() {
     setLoading(true); setError("");
     try {
       const r = await callClaude(idFile,
-        `This is a Georgian ID card or passport. Extract the data and respond ONLY with a JSON object, no other text:
-{"isValidDocument":true,"firstName":"FIRSTNAME_IN_LATIN","lastName":"LASTNAME_IN_LATIN","personalNumber":"11DIGITS"}`
+        `This is a Georgian ID card or passport. Extract data and respond ONLY with JSON, no other text:
+{"isValidDocument":true,"firstName":"LATIN_FIRSTNAME","lastName":"LATIN_LASTNAME","firstNameGeo":"ქართული_სახელი","lastNameGeo":"ქართული_გვარი","personalNumber":"11DIGITS"}`
       );
       setIdResult(r);
       if (!r.isValidDocument) setError("დოკუმენტი ვერ დადასტურდა");
@@ -149,20 +152,22 @@ export default function App() {
     setLoading(true); setError("");
     try {
       const r = await callClaude(extractFile,
-        `This is a Georgian public registry extract (საჯარო რეესტრის ამონაწერი) from napr.gov.ge. Extract owner data and respond ONLY with a JSON object:
-{"isValidDocument":true,"ownerFirstName":"FIRSTNAME_IN_LATIN","ownerLastName":"LASTNAME_IN_LATIN","ownerPersonalNumber":"11DIGITS","cadastralCode":"CODE"}`
+        `This is a Georgian public registry extract (საჯარო რეესტრის ამონაწერი) from napr.gov.ge. Extract owner data and respond ONLY with JSON:
+{"isValidDocument":true,"ownerFirstName":"LATIN_OR_GEO_FIRSTNAME","ownerLastName":"LATIN_OR_GEO_LASTNAME","ownerFirstNameGeo":"ქართული_სახელი","ownerLastNameGeo":"ქართული_გვარი","ownerPersonalNumber":"11DIGITS","cadastralCode":"CODE"}`
       );
       setExtractResult(r);
-      const ok =
-        r.isValidDocument &&
-        norm(r.ownerFirstName) === norm(form.firstName) &&
-        norm(r.ownerLastName) === norm(form.lastName) &&
-        norm(r.ownerPersonalNumber) === norm(form.personalNumber) &&
-        idResult?.isValidDocument &&
-        norm(idResult.firstName) === norm(form.firstName) &&
-        norm(idResult.lastName) === norm(form.lastName) &&
+
+      const idOk = idResult?.isValidDocument &&
+        nameMatch(form.firstName, idResult.firstName, idResult.firstNameGeo) &&
+        nameMatch(form.lastName, idResult.lastName, idResult.lastNameGeo) &&
         norm(idResult.personalNumber) === norm(form.personalNumber);
-      setStatus(ok ? "approved" : "blocked");
+
+      const extractOk = r.isValidDocument &&
+        nameMatch(form.firstName, r.ownerFirstName, r.ownerFirstNameGeo) &&
+        nameMatch(form.lastName, r.ownerLastName, r.ownerLastNameGeo) &&
+        norm(r.ownerPersonalNumber) === norm(form.personalNumber);
+
+      setStatus(idOk && extractOk ? "approved" : "blocked");
       setStep(3);
     } catch(e) { setError(e.message); }
     setLoading(false);
@@ -175,10 +180,10 @@ export default function App() {
   };
 
   const idMatch = idResult &&
-    norm(idResult.firstName) === norm(form.firstName) &&
-    norm(idResult.lastName) === norm(form.lastName) &&
-    norm(idResult.personalNumber) === norm(form.personalNumber) &&
-    idResult.isValidDocument;
+    idResult.isValidDocument &&
+    nameMatch(form.firstName, idResult.firstName, idResult.firstNameGeo) &&
+    nameMatch(form.lastName, idResult.lastName, idResult.lastNameGeo) &&
+    norm(idResult.personalNumber) === norm(form.personalNumber);
 
   const inp = { width: "100%", marginBottom: 8, padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 14, boxSizing: "border-box", outline: "none" };
   const btn = (x = {}) => ({ padding: "10px 16px", border: "1px solid #e5e7eb", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 500, ...x });
@@ -191,10 +196,14 @@ export default function App() {
 
       {step === 0 && (
         <div>
-          <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 10px" }}>სახელი და გვარი ლათინურად შეიყვანეთ (პირადობის მიხედვით)</p>
-          {[["firstName","სახელი — BACHUKI"],["lastName","გვარი — KHARAISHVILI"],["personalNumber","პირადი ნომერი (11 ციფრი)"],["phone","ტელეფონი (+995...)"]].map(([key, ph]) => (
-            <input key={key} placeholder={ph} value={form[key]} maxLength={key==="personalNumber"?11:undefined}
-              onChange={e => setForm(p => ({...p, [key]: e.target.value.toUpperCase()}))} style={inp} />
+          <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 12px" }}>
+            სახელი და გვარი შეიყვანეთ ქართულად ან ლათინურად — პირადობის მიხედვით
+          </p>
+          {[["firstName","სახელი (ბაჩუკი ან BACHUKI)"],["lastName","გვარი (ხარაიშვილი ან KHARAISHVILI)"],["personalNumber","პირადი ნომერი (11 ციფრი)"],["phone","ტელეფონი (+995...)"]].map(([key, ph]) => (
+            <input key={key} placeholder={ph} value={form[key]}
+              maxLength={key==="personalNumber"?11:undefined}
+              onChange={e => setForm(p => ({...p, [key]: e.target.value}))}
+              style={inp} />
           ))}
           {error && <p style={{ color: "#dc2626", fontSize: 13, margin: "0 0 10px" }}>{error}</p>}
           <button onClick={handleReg} style={btn({ width: "100%", background: "#1e40af", color: "#fff", border: "none" })}>გაგრძელება →</button>
@@ -212,7 +221,9 @@ export default function App() {
               </p>
               <div style={{ fontSize:12, color:"#374151" }}>
                 <div><span style={{color:"#9ca3af"}}>რეგისტრაცია: </span>{form.firstName} {form.lastName} / {form.personalNumber}</div>
-                <div><span style={{color:"#9ca3af"}}>ამოცნობილი: </span>{idResult.firstName} {idResult.lastName} / {idResult.personalNumber}</div>
+                <div><span style={{color:"#9ca3af"}}>ამოცნობილი: </span>
+                  {idResult.firstNameGeo || idResult.firstName} {idResult.lastNameGeo || idResult.lastName} / {idResult.personalNumber}
+                </div>
               </div>
             </div>
           )}
@@ -252,8 +263,8 @@ export default function App() {
               <div style={{ display:"grid", gridTemplateColumns:"90px 1fr 1fr 20px", gap:8, padding:"5px 0", fontSize:11, color:"#9ca3af", borderBottom:"1px solid #f3f4f6" }}>
                 <span/><span>რეგისტრაცია</span><span>ამონაწერი</span><span/>
               </div>
-              <MatchRow label="სახელი" regVal={form.firstName} docVal={extractResult.ownerFirstName} />
-              <MatchRow label="გვარი" regVal={form.lastName} docVal={extractResult.ownerLastName} />
+              <MatchRow label="სახელი" regVal={form.firstName} docVal={extractResult.ownerFirstNameGeo || extractResult.ownerFirstName} />
+              <MatchRow label="გვარი" regVal={form.lastName} docVal={extractResult.ownerLastNameGeo || extractResult.ownerLastName} />
               <MatchRow label="პირადი №" regVal={form.personalNumber} docVal={extractResult.ownerPersonalNumber} />
               {extractResult.cadastralCode && (
                 <div style={{ padding:"8px 0", fontSize:12 }}>
