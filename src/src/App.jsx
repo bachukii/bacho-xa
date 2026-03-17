@@ -23,7 +23,10 @@ const REGIONS = ["თბილისი","ვაკე","საბურთა�
 const TYPES = ["ბინა","სახლი","მიწა","კომერციული"];
 const SALE_TYPES = ["იყიდება","ქირავდება"];
 
+const LAT_TO_GEO = {a:"ა",b:"ბ",g:"გ",d:"დ",e:"ე",v:"ვ",z:"ზ",t:"თ",i:"ი",k:"კ",l:"ლ",m:"მ",n:"ნ",o:"ო",p:"პ",r:"რ",s:"ს",u:"უ",f:"ფ",q:"ქ",y:"ყ",h:"ჰ",j:"ჯ",x:"ხ",A:"ა",B:"ბ",G:"გ",D:"დ",E:"ე",V:"ვ",K:"კ",L:"ლ",M:"მ",N:"ნ",O:"ო",P:"პ",T:"თ",I:"ი",U:"უ",F:"ფ",Q:"ქ",H:"ჰ",J:"ჯ",X:"ხ"};
+function latToGeo(s){return (s||"").split("").map(c=>LAT_TO_GEO[c]||c).join("");}
 function norm(s){return (s||"").trim().toLowerCase();}
+function nameMatch(fv,lat,geo){const f=norm(fv);return f===norm(lat)||f===norm(geo)||f===norm(latToGeo(lat));}
 
 const inp = {width:"100%",marginBottom:8,padding:"10px 14px",border:`1px solid ${C.border}`,borderRadius:8,fontSize:14,boxSizing:"border-box",outline:"none",background:C.surface2,color:C.text};
 const btn = (x={})=>({padding:"10px 16px",border:`1px solid ${C.border}`,borderRadius:8,background:C.surface,cursor:"pointer",fontSize:14,fontWeight:500,color:C.text,...x});
@@ -342,14 +345,14 @@ export default function App(){
   const [filterSale,setFilterSale]=useState("ყველა");
   const [toast,setToast]=useState(null);
 
+  // ვერიფიკაციის state — სამუშაო ვერსიიდან
   const [step,setStep]=useState(0);
   const [form,setForm]=useState({firstName:"",lastName:"",personalNumber:"",phone:""});
   const [listing,setListing]=useState({title:"",price:"",area:"",floor:"",rooms:"",region:"თბილისი",type:"ბინა",saleType:"იყიდება",description:"",cadastral:""});
   const [photos,setPhotos]=useState([]);
   const [idFile,setIdFile]=useState(null);
   const [extractFile,setExtractFile]=useState(null);
-  const [idValid,setIdValid]=useState(false);
-  const [idConfirmed,setIdConfirmed]=useState(false);
+  const [idResult,setIdResult]=useState(null);
   const [extractResult,setExtractResult]=useState(null);
   const [verifyLoading,setVerifyLoading]=useState(false);
   const [verifyError,setVerifyError]=useState("");
@@ -376,56 +379,52 @@ export default function App(){
   const callClaude=async(file,prompt)=>{
     const{base64,mediaType}=await fileToBase64(file);
     const contentItem=mediaType==="application/pdf"?{type:"document",source:{type:"base64",media_type:mediaType,data:base64}}:{type:"image",source:{type:"base64",media_type:mediaType,data:base64}};
-    const res=await fetch("/.netlify/functions/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:[contentItem,{type:"text",text:prompt}]}]})});
+    const res=await fetch("/.netlify/functions/verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,messages:[{role:"user",content:[contentItem,{type:"text",text:prompt}]}]})});
     const data=await res.json();
     if(data.error)throw new Error(data.error.message);
     const text=data.content.map(c=>c.text||"").join("");
     const jsonMatch=text.match(/\{[\s\S]*\}/);
-    if(!jsonMatch)throw new Error("AI პასუხი: "+text.substring(0,120));
-    return JSON.parse(jsonMatch[0]);
+    if(!jsonMatch)throw new Error("პასუხი: "+text.substring(0,150));
+    try{return JSON.parse(jsonMatch[0]);}
+    catch(e){throw new Error("JSON შეცდომა: "+jsonMatch[0].substring(0,100));}
   };
 
+  // ✅ სამუშაო ვერიფიკაციის ლოგიკა — ზუსტად გადმოტანილი
   const handleReg=()=>{
     if(!form.firstName||!form.lastName||!form.personalNumber||!form.phone){setVerifyError("შეავსეთ ყველა ველი");return;}
     if(!/^\d{11}$/.test(form.personalNumber)){setVerifyError("პირადი ნომერი — 11 ციფრი");return;}
     setVerifyError("");setStep(1);
   };
 
-  // Step 1: მხოლოდ ამოწმებს - ეს ნამდვილი ID-ია?
-  const handleCheckId=async()=>{
+  const handleVerifyId=async()=>{
     if(!idFile){setVerifyError("ატვირთეთ დოკუმენტი");return;}
     setVerifyLoading(true);setVerifyError("");
     try{
       const r=await callClaude(idFile,
-        `Look at this image. Is this a valid Georgian government-issued identity document (ID card or passport)?
-Answer ONLY with JSON: {"isValidDocument":true}  or  {"isValidDocument":false}
-Do not extract or mention any personal information.`
+        `Georgian ID card or passport. Extract ALL name variants and respond ONLY with JSON, no extra text:
+{"isValidDocument":true,"firstName":"LATIN_FIRSTNAME","lastName":"LATIN_LASTNAME","firstNameGeo":"ქართული_სახელი","lastNameGeo":"ქართული_გვარი","personalNumber":"11digits"}`
       );
-      if(r.isValidDocument){setIdValid(true);}
-      else{setVerifyError("ეს ნამდვილი ID დოკუმენტი არ ჩანს — სცადეთ სხვა ფოტო");}
+      setIdResult(r);
+      if(!r.isValidDocument)setVerifyError("დოკუმენტი ვერ დადასტურდა");
     }catch(e){setVerifyError(e.message);}
     setVerifyLoading(false);
   };
 
-  // Step 2: ამონაწერი - Claude ეძებს პირად ნომერს ტექსტში
   const handleVerifyExtract=async()=>{
     if(!extractFile){setVerifyError("ატვირთეთ ამონაწერი");return;}
     setVerifyLoading(true);setVerifyError("");
     try{
-      const pn=form.personalNumber;
       const r=await callClaude(extractFile,
-        `This is a Georgian property document. Search the visible text for the number sequence "${pn}".
-Does this exact number appear anywhere in the document?
-Answer ONLY with JSON:
-{"documentVisible":true,"numberFound":true,"cadastralCode":"code if visible or null","allOwnerNumbers":["number1","number2"]}`
+        `Georgian public registry extract (napr.gov.ge). May have multiple owners (თანასაკუთრება).
+Find if personal number "${form.personalNumber}" is listed as owner.
+Respond ONLY with JSON:
+{"isValidDocument":true,"found":true,"ownerFirstName":"LATIN","ownerLastName":"LATIN","ownerFirstNameGeo":"ქართული","ownerLastNameGeo":"ქართული","ownerPersonalNumber":"11digits","cadastralCode":"CODE","allOwners":["სახელი გვარი"]}`
       );
       setExtractResult(r);
-      if(r.numberFound){
-        setListing(l=>({...l,cadastral:r.cadastralCode||""}));
-        setStep(3);
-      } else {
-        setVerifyError("პირადი ნომერი ამონაწერში ვერ მოიძებნა — დარწმუნდით რომ სწორი ამონაწერია");
-      }
+      const idOk=idResult?.isValidDocument&&nameMatch(form.firstName,idResult.firstName,idResult.firstNameGeo)&&nameMatch(form.lastName,idResult.lastName,idResult.lastNameGeo)&&norm(idResult.personalNumber)===norm(form.personalNumber);
+      const extractOk=r.isValidDocument&&r.found&&norm(r.ownerPersonalNumber)===norm(form.personalNumber);
+      if(idOk&&extractOk){setListing(l=>({...l,cadastral:r.cadastralCode||""}));setStep(3);}
+      else setStep(4);
     }catch(e){setVerifyError(e.message);}
     setVerifyLoading(false);
   };
@@ -455,8 +454,9 @@ Answer ONLY with JSON:
     setVerifyLoading(false);
   };
 
-  const resetSell=()=>{setStep(0);setForm({firstName:"",lastName:"",personalNumber:"",phone:""});setListing({title:"",price:"",area:"",floor:"",rooms:"",region:"თბილისი",type:"ბინა",saleType:"იყიდება",description:"",cadastral:""});setPhotos([]);setIdFile(null);setExtractFile(null);setIdValid(false);setIdConfirmed(false);setExtractResult(null);setSubmitted(false);setVerifyError("");setTab("feed");};
+  const resetSell=()=>{setStep(0);setForm({firstName:"",lastName:"",personalNumber:"",phone:""});setListing({title:"",price:"",area:"",floor:"",rooms:"",region:"თბილისი",type:"ბინა",saleType:"იყიდება",description:"",cadastral:""});setPhotos([]);setIdFile(null);setExtractFile(null);setIdResult(null);setExtractResult(null);setSubmitted(false);setVerifyError("");setTab("feed");};
 
+  const idMatch=idResult?.isValidDocument&&nameMatch(form.firstName,idResult.firstName,idResult.firstNameGeo)&&nameMatch(form.lastName,idResult.lastName,idResult.lastNameGeo)&&norm(idResult.personalNumber)===norm(form.personalNumber);
   const filtered=listings.filter(l=>(filterRegion==="ყველა"||l.region===filterRegion)&&(filterType==="ყველა"||l.type===filterType)&&(filterSale==="ყველა"||(l.sale_type||"იყიდება")===filterSale));
   const TABS=[{id:"feed",icon:"🏠",label:"ლენტი"},{id:"map",icon:"🗺",label:"რუკა"},{id:"alerts",icon:"🔔",label:"სიგნალი"},{id:"post",icon:"➕",label:"დამატება"},{id:"stats",icon:"📊",label:"სტატ."},{id:"admin",icon:"🔐",label:"ადმინი"}];
 
@@ -510,8 +510,8 @@ Answer ONLY with JSON:
 
           {step===0&&(
             <div>
-              <p style={{fontSize:12,color:C.muted,margin:"0 0 12px"}}>სახელი/გვარი ქართულად ან ლათინურად</p>
-              {[["firstName","სახელი"],["lastName","გვარი"],["personalNumber","პირადი ნომერი (11 ციფრი)"],["phone","ტელეფონი (+995...)"]].map(([key,ph])=>(
+              <p style={{fontSize:12,color:C.muted,margin:"0 0 12px"}}>სახელი/გვარი ქართულად ან ლათინურად — ორივე მუშაობს</p>
+              {[["firstName","სახელი (ბაჩუკი ან BACHUKI)"],["lastName","გვარი (ხარაიშვილი ან KHARAISHVILI)"],["personalNumber","პირადი ნომერი (11 ციფრი)"],["phone","ტელეფონი (+995...)"]].map(([key,ph])=>(
                 <input key={key} placeholder={ph} value={form[key]} maxLength={key==="personalNumber"?11:undefined} onChange={e=>setForm(p=>({...p,[key]:e.target.value}))} style={inp}/>
               ))}
               {verifyError&&<p style={{color:C.red,fontSize:13,margin:"0 0 10px"}}>{verifyError}</p>}
@@ -522,46 +522,35 @@ Answer ONLY with JSON:
           {step===1&&(
             <div>
               <p style={{fontSize:13,color:C.muted,marginTop:0}}>ატვირთეთ პირადობის მოწმობა ან პასპორტი.</p>
-              <FileUpload label="JPG, PNG ან PDF" accept="image/*,.pdf" file={idFile} onChange={f=>{setIdFile(f);setIdValid(false);setIdConfirmed(false);}}/>
-
-              {!idValid&&(
-                <>
-                  {verifyError&&<p style={{color:C.red,fontSize:13,margin:"0 0 10px"}}>{verifyError}</p>}
-                  <button onClick={handleCheckId} disabled={verifyLoading||!idFile} style={btn({width:"100%",opacity:(verifyLoading||!idFile)?0.5:1})}>
-                    {verifyLoading?"მოწმდება...":"✓ დოკუმენტის შემოწმება"}
-                  </button>
-                </>
-              )}
-
-              {idValid&&!idConfirmed&&(
-                <div style={{background:C.greenDim,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"14px",marginBottom:"1rem"}}>
-                  <p style={{margin:"0 0 10px",fontSize:13,fontWeight:600,color:C.green}}>✓ ნამდვილი ქართული ID დოკუმენტი</p>
-                  <p style={{margin:"0 0 12px",fontSize:12,color:C.muted}}>გთხოვთ დაადასტუროთ რომ ფოტოში თქვენი მონაცემები ემთხვევა რეგისტრაციის მონაცემებს:</p>
-                  <div style={{background:C.surface2,borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:13}}>
-                    <div><span style={{color:C.muted}}>სახელი: </span><strong>{form.firstName}</strong></div>
-                    <div><span style={{color:C.muted}}>გვარი: </span><strong>{form.lastName}</strong></div>
-                    <div><span style={{color:C.muted}}>პირადი №: </span><strong>{form.personalNumber}</strong></div>
+              <FileUpload label="JPG, PNG ან PDF" accept="image/*,.pdf" file={idFile} onChange={f=>{setIdFile(f);setIdResult(null);}}/>
+              {idResult&&(
+                <div style={{background:idMatch?C.greenDim:C.redDim,border:`1px solid ${idMatch?C.greenBorder:"rgba(224,85,85,.3)"}`,borderRadius:10,padding:"12px 14px",marginBottom:"1rem"}}>
+                  <p style={{margin:"0 0 6px",fontSize:13,fontWeight:600,color:idMatch?C.green:C.red}}>
+                    {idMatch?"✓ პირადობა დადასტურდა":"✗ მონაცემები არ ემთხვევა"}
+                  </p>
+                  <div style={{fontSize:12,color:C.muted}}>
+                    <div><span style={{color:C.dim}}>რეგ: </span>{form.firstName} {form.lastName} / {form.personalNumber}</div>
+                    <div><span style={{color:C.dim}}>ამოცნობ: </span>{idResult.firstNameGeo||idResult.firstName} {idResult.lastNameGeo||idResult.lastName} / {idResult.personalNumber}</div>
                   </div>
-                  <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginBottom:12}}>
-                    <input type="checkbox" onChange={e=>setIdConfirmed(e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
-                    <span style={{fontSize:13,color:C.text}}>დიახ, ფოტოში ჩემი მონაცემებია და ისინი ემთხვევა ზემოთ მითითებულს</span>
-                  </label>
-                  <button onClick={()=>{setVerifyError("");setStep(2);}} disabled={!idConfirmed} style={btn({width:"100%",background:C.goldDim,border:`1px solid ${C.borderGold}`,color:C.gold,opacity:idConfirmed?1:0.4})}>
-                    გაგრძელება →
-                  </button>
                 </div>
               )}
+              {verifyError&&<p style={{color:C.red,fontSize:13,margin:"0 0 10px"}}>{verifyError}</p>}
+              <div style={{display:"flex",gap:8}}>
+                {!idMatch&&<button onClick={handleVerifyId} disabled={verifyLoading||!idFile} style={btn({flex:1,opacity:(verifyLoading||!idFile)?0.5:1})}>{verifyLoading?"მოწმდება...":"გადამოწმება"}</button>}
+                {idMatch&&<button onClick={()=>{setVerifyError("");setStep(2);}} style={btn({flex:1,background:C.goldDim,border:`1px solid ${C.borderGold}`,color:C.gold})}>გაგრძელება →</button>}
+                {idResult&&!idMatch&&<button onClick={()=>{setIdResult(null);setIdFile(null);setVerifyError("");}} style={btn({flex:1})}>↩ თავიდან</button>}
+              </div>
             </div>
           )}
 
           {step===2&&(
             <div>
               <p style={{fontSize:13,color:C.muted,marginTop:0}}>ატვირთეთ საჯარო რეესტრის ამონაწერი napr.gov.ge-დან.</p>
-              <p style={{fontSize:12,color:C.dim,marginTop:0}}>AI მოძებნის თქვენს პირად ნომერს <strong style={{color:C.gold}}>({form.personalNumber})</strong> ამონაწერში.</p>
+              <p style={{fontSize:12,color:C.dim,marginTop:0}}>თანასაკუთრების შემთხვევაშიც მუშაობს.</p>
               <FileUpload label="PDF ან JPG/PNG" accept="image/*,.pdf" file={extractFile} onChange={setExtractFile}/>
               {verifyError&&<p style={{color:C.red,fontSize:13,margin:"0 0 10px"}}>{verifyError}</p>}
               <button onClick={handleVerifyExtract} disabled={verifyLoading||!extractFile} style={btn({width:"100%",background:C.goldDim,border:`1px solid ${C.borderGold}`,color:C.gold,opacity:(verifyLoading||!extractFile)?0.5:1})}>
-                {verifyLoading?"იძებნება...":"გადამოწმება"}
+                {verifyLoading?"მოწმდება...":"გადამოწმება"}
               </button>
             </div>
           )}
@@ -569,6 +558,7 @@ Answer ONLY with JSON:
           {step===3&&(
             <div>
               <div style={{background:C.greenDim,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"10px 14px",marginBottom:"1rem",fontSize:13,color:C.green,fontWeight:600}}>✓ ვერიფიკაცია გავლილია</div>
+              {extractResult?.allOwners?.length>1&&<div style={{background:C.blueDim,border:"1px solid rgba(91,157,224,.3)",borderRadius:8,padding:"8px 12px",marginBottom:"1rem",fontSize:12,color:C.blue}}>თანამფლობელები: {extractResult.allOwners.join(", ")}</div>}
               <p style={{fontSize:12,color:C.dim,margin:"0 0 8px"}}>* სავალდებულო</p>
               {[["title","* სათაური"],["price","* ფასი ($)"],["area","* ფართი (მ²)"],["floor","სართული"],["rooms","ოთახები"],["cadastral","საკადასტრო კოდი"]].map(([key,ph])=>(
                 <input key={key} placeholder={ph} value={listing[key]} onChange={e=>setListing(l=>({...l,[key]:e.target.value}))} style={inp}/>
