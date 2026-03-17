@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const REGIONS = ["თბილისი","რუსთავი","ბათუმი","ქუთაისი","გორი","ზუგდიდი","ფოთი","სხვა"];
 const TYPES = ["ბინა","სახლი","მიწა","კომერციული"];
@@ -45,27 +45,45 @@ function FileUpload({ label, accept, file, onChange }) {
   );
 }
 
-function MatchRow({ label, regVal, docVal }) {
-  const norm = s => (s || "").trim().toLowerCase();
-  const ok = norm(regVal) === norm(docVal) && regVal;
+function ListingCard({ listing }) {
   return (
     <div style={{
-      display: "grid", gridTemplateColumns: "90px 1fr 1fr 20px",
-      gap: 8, padding: "6px 0", borderBottom: "1px solid #f3f4f6",
-      fontSize: 12, alignItems: "center"
+      border: "1px solid #e5e7eb", borderRadius: 12, padding: "1rem",
+      marginBottom: "0.75rem", background: "#fff"
     }}>
-      <span style={{ color: "#9ca3af" }}>{label}</span>
-      <span style={{ color: "#6b7280" }}>{regVal || "—"}</span>
-      <span style={{ color: "#111827", fontWeight: 500 }}>{docVal || "—"}</span>
-      <span style={{ color: ok ? "#059669" : "#dc2626", fontWeight: 700 }}>{ok ? "✓" : "✗"}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <p style={{ margin: "0 0 4px", fontWeight: 600, fontSize: 15 }}>{listing.title}</p>
+          <p style={{ margin: "0 0 4px", fontSize: 13, color: "#6b7280" }}>
+            {listing.region} · {listing.type} · {listing.area} მ²
+            {listing.floor ? ` · ${listing.floor} სართ.` : ""}
+            {listing.rooms ? ` · ${listing.rooms} ოთ.` : ""}
+          </p>
+          {listing.description && <p style={{ margin: "0 0 4px", fontSize: 12, color: "#9ca3af" }}>{listing.description}</p>}
+        </div>
+        <div style={{ textAlign: "right", minWidth: 80 }}>
+          <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 16, color: "#1e40af" }}>${listing.price}</p>
+          <span style={{ fontSize: 10, background: "#d1fae5", color: "#065f46", padding: "2px 6px", borderRadius: 4 }}>✓ ვერიფ.</span>
+        </div>
+      </div>
+      {listing.cadastral_code && (
+        <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>საკადასტრო: {listing.cadastral_code}</p>
+      )}
     </div>
   );
 }
 
 export default function App() {
+  const [view, setView] = useState("home");
   const [step, setStep] = useState(0);
+  const [listings, setListings] = useState([]);
+  const [loadingListings, setLoadingListings] = useState(false);
+  const [filterRegion, setFilterRegion] = useState("ყველა");
+  const [filterType, setFilterType] = useState("ყველა");
+
   const [form, setForm] = useState({ firstName: "", lastName: "", personalNumber: "", phone: "" });
   const [listing, setListing] = useState({ title: "", price: "", area: "", floor: "", rooms: "", region: "თბილისი", type: "ბინა", description: "", cadastral: "" });
+
   const [idFile, setIdFile] = useState(null);
   const [extractFile, setExtractFile] = useState(null);
   const [idResult, setIdResult] = useState(null);
@@ -75,9 +93,22 @@ export default function App() {
   const [submitted, setSubmitted] = useState(false);
 
   const norm = s => (s || "").trim().toLowerCase();
-
   const nameMatch = (formVal, latin, geo) =>
     norm(formVal) === norm(latin) || norm(formVal) === norm(geo);
+
+  useEffect(() => {
+    if (view === "browse") loadListings();
+  }, [view]);
+
+  const loadListings = async () => {
+    setLoadingListings(true);
+    try {
+      const res = await fetch("/.netlify/functions/verify");
+      const data = await res.json();
+      setListings(Array.isArray(data) ? data : []);
+    } catch { setListings([]); }
+    setLoadingListings(false);
+  };
 
   const fileToBase64 = (file) => new Promise((res, rej) => {
     if (file.type.includes("pdf")) {
@@ -157,18 +188,15 @@ export default function App() {
         `Georgian public registry extract (napr.gov.ge). There may be multiple owners (თანასაკუთრება).
 Find if personal number "${form.personalNumber}" is listed as an owner.
 Respond ONLY with JSON:
-{"isValidDocument":true,"found":true,"ownerFirstName":"LATIN","ownerLastName":"LATIN","ownerFirstNameGeo":"ქართული","ownerLastNameGeo":"ქართული","ownerPersonalNumber":"11digits","cadastralCode":"CODE","allOwners":["სახელი გვარი","სახელი გვარი"]}`
+{"isValidDocument":true,"found":true,"ownerFirstName":"LATIN","ownerLastName":"LATIN","ownerFirstNameGeo":"ქართული","ownerLastNameGeo":"ქართული","ownerPersonalNumber":"11digits","cadastralCode":"CODE","allOwners":["სახელი გვარი"]}`
       );
       setExtractResult(r);
-
       const idOk = idResult?.isValidDocument &&
         nameMatch(form.firstName, idResult.firstName, idResult.firstNameGeo) &&
         nameMatch(form.lastName, idResult.lastName, idResult.lastNameGeo) &&
         norm(idResult.personalNumber) === norm(form.personalNumber);
-
       const extractOk = r.isValidDocument && r.found &&
         norm(r.ownerPersonalNumber) === norm(form.personalNumber);
-
       if (idOk && extractOk) {
         setListing(l => ({ ...l, cadastral: r.cadastralCode || "" }));
         setStep(3);
@@ -179,22 +207,50 @@ Respond ONLY with JSON:
     setLoading(false);
   };
 
-  const handleSubmitListing = () => {
-    if (!listing.title || !listing.price || !listing.area || !listing.region) {
+  const handleSubmitListing = async () => {
+    if (!listing.title || !listing.price || !listing.area) {
       setError("შეავსეთ სავალდებულო ველები (*)"); return;
     }
-    setError("");
-    setSubmitted(true);
-    setStep(4);
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/.netlify/functions/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_listing",
+          data: {
+            first_name: form.firstName,
+            last_name: form.lastName,
+            personal_number: form.personalNumber,
+            phone: form.phone,
+            cadastral_code: listing.cadastral,
+            title: listing.title,
+            price: parseFloat(listing.price),
+            area: parseFloat(listing.area),
+            floor: listing.floor,
+            rooms: listing.rooms,
+            region: listing.region,
+            type: listing.type,
+            description: listing.description,
+            status: "pending",
+          }
+        })
+      });
+      const data = await res.json();
+      if (data.success) { setSubmitted(true); setStep(4); }
+      else throw new Error(data.error || "შეცდომა");
+    } catch(e) { setError(e.message); }
+    setLoading(false);
   };
 
-  const reset = () => {
+  const resetSell = () => {
     setStep(0);
     setForm({ firstName: "", lastName: "", personalNumber: "", phone: "" });
     setListing({ title: "", price: "", area: "", floor: "", rooms: "", region: "თბილისი", type: "ბინა", description: "", cadastral: "" });
     setIdFile(null); setExtractFile(null);
     setIdResult(null); setExtractResult(null);
     setSubmitted(false); setError("");
+    setView("home");
   };
 
   const idMatch = idResult?.isValidDocument &&
@@ -204,18 +260,68 @@ Respond ONLY with JSON:
 
   const inp = { width: "100%", marginBottom: 8, padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 14, boxSizing: "border-box", outline: "none" };
   const btn = (x = {}) => ({ padding: "10px 16px", border: "1px solid #e5e7eb", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 500, ...x });
-  const sel = { ...inp, marginBottom: 8 };
 
-  const approved = submitted;
-  const blocked = step === 4 && !submitted;
+  const filteredListings = listings.filter(l =>
+    (filterRegion === "ყველა" || l.region === filterRegion) &&
+    (filterType === "ყველა" || l.type === filterType)
+  );
 
+  /* HOME */
+  if (view === "home") return (
+    <div style={{ maxWidth: 480, margin: "60px auto", padding: "0 1rem", fontFamily: "system-ui, sans-serif", textAlign: "center" }}>
+      <p style={{ fontSize: 11, color: "#9ca3af", letterSpacing: 2, textTransform: "uppercase", margin: "0 0 8px" }}>P2P Verifier</p>
+      <h1 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 8px", color: "#111827" }}>პირდაპირი უძრავი ქონება</h1>
+      <p style={{ fontSize: 14, color: "#6b7280", margin: "0 0 40px" }}>მხოლოდ ვერიფიცირებული მესაკუთრეები · მაკლერის გარეშე</p>
+      <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+        <button onClick={() => setView("browse")} style={btn({ padding: "14px 28px", background: "#1e40af", color: "#fff", border: "none", fontSize: 15 })}>
+          🏠 განცხადებების ნახვა
+        </button>
+        <button onClick={() => setView("sell")} style={btn({ padding: "14px 28px", fontSize: 15 })}>
+          ➕ განცხადების დამატება
+        </button>
+      </div>
+    </div>
+  );
+
+  /* BROWSE */
+  if (view === "browse") return (
+    <div style={{ maxWidth: 560, margin: "0 auto", padding: "1.5rem 1rem", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "1.5rem" }}>
+        <button onClick={() => setView("home")} style={btn({ padding: "6px 12px", fontSize: 13 })}>← მთავარი</button>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>განცხადებები</h2>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: "1rem" }}>
+        <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)} style={{ ...inp, marginBottom: 0, flex: 1 }}>
+          <option>ყველა</option>
+          {REGIONS.map(r => <option key={r}>{r}</option>)}
+        </select>
+        <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ ...inp, marginBottom: 0, flex: 1 }}>
+          <option>ყველა</option>
+          {TYPES.map(t => <option key={t}>{t}</option>)}
+        </select>
+        <button onClick={loadListings} style={btn({ padding: "8px 12px" })}>↻</button>
+      </div>
+      {loadingListings
+        ? <p style={{ textAlign: "center", color: "#9ca3af" }}>იტვირთება...</p>
+        : filteredListings.length === 0
+          ? <div style={{ textAlign: "center", padding: "3rem 0", color: "#9ca3af" }}>
+              <p style={{ fontSize: 32, margin: "0 0 8px" }}>🏠</p>
+              <p>განცხადებები არ არის</p>
+            </div>
+          : filteredListings.map(l => <ListingCard key={l.id} listing={l} />)
+      }
+    </div>
+  );
+
+  /* SELL — verification + listing form */
   return (
-    <div style={{ maxWidth: 480, margin: "40px auto", padding: "0 1rem", fontFamily: "system-ui, sans-serif" }}>
-      <p style={{ fontSize: 10, color: "#9ca3af", margin: "0 0 3px", letterSpacing: 1, textTransform: "uppercase" }}>P2P Verifier</p>
-      <h2 style={{ margin: "0 0 1.5rem", fontSize: 20, fontWeight: 600, color: "#111827" }}>მესაკუთრის ვერიფიკაცია</h2>
+    <div style={{ maxWidth: 480, margin: "0 auto", padding: "1.5rem 1rem", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "1.5rem" }}>
+        <button onClick={() => setView("home")} style={btn({ padding: "6px 12px", fontSize: 13 })}>← მთავარი</button>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>განცხადების დამატება</h2>
+      </div>
       <StepBar current={step} />
 
-      {/* Step 0 — Registration */}
       {step === 0 && (
         <div>
           <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 12px" }}>სახელი/გვარი ქართულად ან ლათინურად (პირადობის მიხედვით)</p>
@@ -228,7 +334,6 @@ Respond ONLY with JSON:
         </div>
       )}
 
-      {/* Step 1 — ID */}
       {step === 1 && (
         <div>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 0 }}>ატვირთეთ პირადობის მოწმობა ან პასპორტი.</p>
@@ -253,11 +358,10 @@ Respond ONLY with JSON:
         </div>
       )}
 
-      {/* Step 2 — Extract */}
       {step === 2 && (
         <div>
           <p style={{ fontSize:13, color:"#6b7280", marginTop:0 }}>ატვირთეთ საჯარო რეესტრის ამონაწერი napr.gov.ge-დან.</p>
-          <p style={{ fontSize:12, color:"#9ca3af", marginTop:0 }}>თანასაკუთრების შემთხვევაშიც მუშაობს — სისტემა თქვენს პირად ნომერს მოძებნის.</p>
+          <p style={{ fontSize:12, color:"#9ca3af", marginTop:0 }}>თანასაკუთრების შემთხვევაშიც მუშაობს.</p>
           <FileUpload label="PDF ან JPG/PNG" accept="image/*,.pdf" file={extractFile} onChange={setExtractFile} />
           {error && <p style={{ color:"#dc2626", fontSize:13, margin:"0 0 10px" }}>{error}</p>}
           <button onClick={handleVerifyExtract} disabled={loading||!extractFile} style={btn({ width:"100%", background:"#1e40af", color:"#fff", border:"none", opacity:(loading||!extractFile)?0.5:1 })}>
@@ -266,71 +370,49 @@ Respond ONLY with JSON:
         </div>
       )}
 
-      {/* Step 3 — Listing form */}
       {step === 3 && (
         <div>
           <div style={{ background:"#d1fae5", border:"1px solid #6ee7b7", borderRadius:10, padding:"10px 14px", marginBottom:"1rem", fontSize:13, color:"#065f46", fontWeight:600 }}>
-            ✓ ვერიფიკაცია გავლილია — შეავსეთ განცხადება
+            ✓ ვერიფიკაცია გავლილია
           </div>
           {extractResult?.allOwners?.length > 1 && (
             <div style={{ background:"#eff6ff", border:"1px solid #93c5fd", borderRadius:8, padding:"8px 12px", marginBottom:"1rem", fontSize:12, color:"#1e40af" }}>
               თანამფლობელები: {extractResult.allOwners.join(", ")}
             </div>
           )}
-          <p style={{ fontSize:12, color:"#9ca3af", margin:"0 0 8px" }}>* სავალდებულო ველები</p>
-          {[["title","* სათაური (მაგ: 3-ოთახიანი ბინა ვაკეში)"],["price","* ფასი ($)"],["area","* ფართი (მ²)"],["floor","სართული"],["rooms","ოთახები"],["cadastral","საკადასტრო კოდი"]].map(([key, ph]) => (
+          <p style={{ fontSize:12, color:"#9ca3af", margin:"0 0 8px" }}>* სავალდებულო</p>
+          {[["title","* სათაური"],["price","* ფასი ($)"],["area","* ფართი (მ²)"],["floor","სართული"],["rooms","ოთახები"],["cadastral","საკადასტრო კოდი"]].map(([key, ph]) => (
             <input key={key} placeholder={ph} value={listing[key]}
               onChange={e => setListing(l => ({...l, [key]: e.target.value}))} style={inp} />
           ))}
-          <select value={listing.region} onChange={e => setListing(l => ({...l, region: e.target.value}))} style={sel}>
+          <select value={listing.region} onChange={e => setListing(l => ({...l, region: e.target.value}))} style={{ ...inp }}>
             {REGIONS.map(r => <option key={r}>{r}</option>)}
           </select>
-          <select value={listing.type} onChange={e => setListing(l => ({...l, type: e.target.value}))} style={sel}>
+          <select value={listing.type} onChange={e => setListing(l => ({...l, type: e.target.value}))} style={{ ...inp }}>
             {TYPES.map(t => <option key={t}>{t}</option>)}
           </select>
           <textarea placeholder="აღწერა" value={listing.description}
             onChange={e => setListing(l => ({...l, description: e.target.value}))}
             style={{ ...inp, height: 80, resize: "vertical" }} />
           {error && <p style={{ color:"#dc2626", fontSize:13, margin:"0 0 10px" }}>{error}</p>}
-          <button onClick={handleSubmitListing} style={btn({ width:"100%", background:"#1e40af", color:"#fff", border:"none" })}>
-            განცხადების გაგზავნა (30₾) →
+          <button onClick={handleSubmitListing} disabled={loading} style={btn({ width:"100%", background:"#1e40af", color:"#fff", border:"none", opacity:loading?0.5:1 })}>
+            {loading ? "ინახება..." : "განცხადების გაგზავნა (30₾) →"}
           </button>
         </div>
       )}
 
-      {/* Step 4 — Result */}
       {step === 4 && (
         <div>
-          <div style={{
-            textAlign:"center", padding:"1.5rem 1rem",
-            background: approved ? "#d1fae5" : "#fee2e2",
-            border:`1px solid ${approved ? "#6ee7b7" : "#fca5a5"}`,
-            borderRadius:12, marginBottom:"1.5rem"
-          }}>
-            <p style={{ fontSize:40, margin:"0 0 6px" }}>{approved ? "✓" : "✗"}</p>
-            <p style={{ fontSize:17, fontWeight:700, margin:"0 0 6px", color: approved ? "#065f46" : "#991b1b" }}>
-              {approved ? "განცხადება გაგზავნილია!" : "ვერიფიკაცია ჩავარდა"}
+          <div style={{ textAlign:"center", padding:"1.5rem 1rem", background:submitted?"#d1fae5":"#fee2e2", border:`1px solid ${submitted?"#6ee7b7":"#fca5a5"}`, borderRadius:12, marginBottom:"1.5rem" }}>
+            <p style={{ fontSize:40, margin:"0 0 6px" }}>{submitted?"✓":"✗"}</p>
+            <p style={{ fontSize:17, fontWeight:700, margin:"0 0 6px", color:submitted?"#065f46":"#991b1b" }}>
+              {submitted?"განცხადება გაგზავნილია!":"ვერიფიკაცია ჩავარდა"}
             </p>
             <p style={{ fontSize:12, color:"#6b7280", margin:0 }}>
-              {approved ? "ადმინი გადაამოწმებს და 24 საათში გამოქვეყნდება" : "მონაცემები არ ემთხვევა — სცადეთ თავიდან"}
+              {submitted?"ადმინი გადაამოწმებს და 24 საათში გამოქვეყნდება":"მონაცემები არ ემთხვევა — სცადეთ თავიდან"}
             </p>
           </div>
-
-          {approved && extractResult && (
-            <div style={{ background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:10, padding:"12px 14px", marginBottom:"1rem" }}>
-              <p style={{ margin:"0 0 8px", fontSize:13, fontWeight:600 }}>განცხადების დეტალები</p>
-              <div style={{ fontSize:12, color:"#374151", display:"grid", gap:4 }}>
-                <div><span style={{color:"#9ca3af"}}>სათაური: </span>{listing.title}</div>
-                <div><span style={{color:"#9ca3af"}}>ფასი: </span>${listing.price}</div>
-                <div><span style={{color:"#9ca3af"}}>ფართი: </span>{listing.area} მ²</div>
-                <div><span style={{color:"#9ca3af"}}>რაიონი: </span>{listing.region}</div>
-                <div><span style={{color:"#9ca3af"}}>ტიპი: </span>{listing.type}</div>
-                {listing.cadastral && <div><span style={{color:"#9ca3af"}}>საკადასტრო: </span>{listing.cadastral}</div>}
-              </div>
-            </div>
-          )}
-
-          <button onClick={reset} style={btn({ width:"100%" })}>↩ თავიდან</button>
+          <button onClick={resetSell} style={btn({ width:"100%" })}>↩ მთავარზე დაბრუნება</button>
         </div>
       )}
     </div>
