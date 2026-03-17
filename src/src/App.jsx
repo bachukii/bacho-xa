@@ -27,7 +27,7 @@ const LAT_TO_GEO = {a:"ა",b:"ბ",g:"გ",d:"დ",e:"ე",v:"ვ",z:"ზ",t:"�
 function latToGeo(s){return (s||"").split("").map(c=>LAT_TO_GEO[c]||c).join("");}
 function norm(s){return (s||"").trim().toLowerCase();}
 function nameMatch(fv,lat,geo){const f=norm(fv);return f===norm(lat)||f===norm(geo)||f===norm(latToGeo(lat));}
-
+cadastral_code
 const inp = {width:"100%",marginBottom:8,padding:"10px 14px",border:`1px solid ${C.border}`,borderRadius:8,fontSize:14,boxSizing:"border-box",outline:"none",background:C.surface2,color:C.text};
 const btn = (x={})=>({padding:"10px 16px",border:`1px solid ${C.border}`,borderRadius:8,background:C.surface,cursor:"pointer",fontSize:14,fontWeight:500,color:C.text,...x});
 
@@ -141,13 +141,16 @@ function ListingCard({l,onClick}){
         </div>
       </div>
       {l.cadastral_code&&(
-        <span style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:600,background:C.tealDim,color:C.teal,border:`1px solid ${C.tealBorder}`}}>
-          🗺 {l.cadastral_code}
-        </span>
-      )}
+  <div style={{background:C.tealDim,border:`1px solid ${C.tealBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <span style={{fontSize:12,color:C.teal}}>🗺 საკადასტრო: <strong>{l.cadastral_code}</strong></span>
+      <a href={`https://maps.gov.ge/?parcel=${l.cadastral_code}`} target="_blank" rel="noreferrer"
+        style={{fontSize:11,color:C.gold,textDecoration:"none",padding:"3px 8px",border:`1px solid ${C.borderGold}`,borderRadius:6}}>
+        maps.gov.ge →
+      </a>
     </div>
-  );
-}
+  </div>
+)}
 
 function DetailView({l,onBack}){
   const coords=DISTRICT_COORDS[l.region||l.district]||null;
