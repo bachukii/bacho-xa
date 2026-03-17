@@ -27,7 +27,7 @@ const LAT_TO_GEO = {a:"ა",b:"ბ",g:"გ",d:"დ",e:"ე",v:"ვ",z:"ზ",t:"�
 function latToGeo(s){return (s||"").split("").map(c=>LAT_TO_GEO[c]||c).join("");}
 function norm(s){return (s||"").trim().toLowerCase();}
 function nameMatch(fv,lat,geo){const f=norm(fv);return f===norm(lat)||f===norm(geo)||f===norm(latToGeo(lat));}
-cadastral_code
+
 const inp = {width:"100%",marginBottom:8,padding:"10px 14px",border:`1px solid ${C.border}`,borderRadius:8,fontSize:14,boxSizing:"border-box",outline:"none",background:C.surface2,color:C.text};
 const btn = (x={})=>({padding:"10px 16px",border:`1px solid ${C.border}`,borderRadius:8,background:C.surface,cursor:"pointer",fontSize:14,fontWeight:500,color:C.text,...x});
 
@@ -81,8 +81,8 @@ function MiniMap({lat,lng,height=180}){
   const ref=useRef();
   useEffect(()=>{
     if(!lat||!lng||!window.L)return;
-    const map=window.L.map(ref.current,{zoomControl:false,dragging:false,scrollWheelZoom:false}).setView([lat,lng],16);
-    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+    const map=window.L.map(ref.current,{zoomControl:true,dragging:true,scrollWheelZoom:false}).setView([lat,lng],16);
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OSM"}).addTo(map);
     const icon=window.L.divIcon({html:'<div style="width:14px;height:14px;background:#c9a84c;border-radius:50%;border:2px solid #fff;box-shadow:0 0 8px rgba(201,168,76,.8)"></div>',className:"",iconSize:[14,14]});
     window.L.marker([lat,lng],{icon}).addTo(map);
     return()=>map.remove();
@@ -104,7 +104,7 @@ function MapView({listings,onDetail}){
       const lg=l.lng||coords?.lng;
       if(!lt||!lg)return;
       const m=window.L.marker([lt,lg],{icon}).addTo(map);
-      m.bindPopup(`<b>${l.title}</b><br/>${l.price}$`);
+      m.bindPopup(`<b>${l.title}</b><br/>${l.price}$${l.cadastral_code?`<br/><a href="https://maps.gov.ge/?parcel=${l.cadastral_code}" target="_blank" style="color:#2ab5aa">🗺 maps.gov.ge</a>`:""}`);
       m.on("click",()=>onDetail&&onDetail(l));
     });
     return()=>map.remove();
@@ -141,19 +141,18 @@ function ListingCard({l,onClick}){
         </div>
       </div>
       {l.cadastral_code&&(
-  <div style={{background:C.tealDim,border:`1px solid ${C.tealBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-      <span style={{fontSize:12,color:C.teal}}>🗺 საკადასტრო: <strong>{l.cadastral_code}</strong></span>
-      <a href={`https://maps.gov.ge/?parcel=${l.cadastral_code}`} target="_blank" rel="noreferrer"
-        style={{fontSize:11,color:C.gold,textDecoration:"none",padding:"3px 8px",border:`1px solid ${C.borderGold}`,borderRadius:6}}>
-        maps.gov.ge →
-      </a>
+        <span style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:600,background:C.tealDim,color:C.teal,border:`1px solid ${C.tealBorder}`}}>
+          🗺 {l.cadastral_code}
+        </span>
+      )}
     </div>
-  </div>
-)}
+  );
+}
 
 function DetailView({l,onBack}){
   const coords=DISTRICT_COORDS[l.region||l.district]||null;
+  const lat=l.lat||coords?.lat;
+  const lng=l.lng||coords?.lng;
   return(
     <div style={{maxWidth:560,margin:"0 auto",padding:"1rem"}}>
       <button onClick={onBack} style={btn({marginBottom:"1rem",padding:"6px 12px",fontSize:13})}>← უკან</button>
@@ -176,13 +175,49 @@ function DetailView({l,onBack}){
           </div>
         ))}
       </div>
+
+      {/* საკადასტრო კოდი + maps.gov.ge ლინკი */}
       {l.cadastral_code&&(
-        <div style={{background:C.tealDim,border:`1px solid ${C.tealBorder}`,borderRadius:8,padding:"8px 12px",marginBottom:12}}>
-          <span style={{fontSize:12,color:C.teal}}>🗺 საკადასტრო კოდი: <strong>{l.cadastral_code}</strong></span>
+        <div style={{background:C.tealDim,border:`1px solid ${C.tealBorder}`,borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+            <div>
+              <div style={{fontSize:10,color:C.teal,marginBottom:2,letterSpacing:.5}}>🗺 საკადასტრო კოდი</div>
+              <div style={{fontSize:14,fontWeight:700,color:C.teal}}>{l.cadastral_code}</div>
+            </div>
+            <a
+              href={`https://maps.gov.ge/?parcel=${l.cadastral_code}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={e=>e.stopPropagation()}
+              style={{display:"inline-flex",alignItems:"center",gap:5,padding:"7px 14px",background:"rgba(42,181,170,0.2)",border:`1px solid ${C.tealBorder}`,borderRadius:8,color:C.teal,fontWeight:600,fontSize:12,textDecoration:"none"}}>
+              🗺 maps.gov.ge-ზე ნახვა →
+            </a>
+          </div>
         </div>
       )}
+
       {l.description&&<p style={{color:C.muted,fontSize:13,lineHeight:1.6,marginBottom:12}}>{l.description}</p>}
-      <MiniMap lat={l.lat||coords?.lat} lng={l.lng||coords?.lng}/>
+
+      {/* Leaflet მინი-რუკა */}
+      <MiniMap lat={lat} lng={lng}/>
+
+      {/* maps.gov.ge iframe - საკადასტრო კოდით */}
+      {l.cadastral_code&&(
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:C.muted,marginBottom:6}}>📍 საკადასტრო რუკა (maps.gov.ge)</div>
+          <div style={{borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`,background:C.surface2,height:300,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}>
+            <div style={{fontSize:12,color:C.muted}}>maps.gov.ge iframe ხშირად CORS-ს ბლოკავს</div>
+            <a
+              href={`https://maps.gov.ge/?parcel=${l.cadastral_code}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{padding:"10px 20px",background:C.tealDim,border:`1px solid ${C.tealBorder}`,borderRadius:8,color:C.teal,fontWeight:600,fontSize:13,textDecoration:"none"}}>
+              🗺 გახსნა maps.gov.ge-ზე → {l.cadastral_code}
+            </a>
+          </div>
+        </div>
+      )}
+
       {l.phone&&(
         <a href={`tel:${l.phone}`} style={{display:"block",textAlign:"center",padding:"12px",background:C.goldDim,border:`1px solid ${C.borderGold}`,borderRadius:10,color:C.gold,fontWeight:700,fontSize:15,textDecoration:"none"}}>
           📞 გამყიდველს დარეკვა
@@ -327,7 +362,15 @@ function AdminView(){
           <p style={{fontSize:12,color:C.muted,marginBottom:4}}>{l.region} · {l.type} · {l.area}მ² · {l.price}$</p>
           <p style={{fontSize:12,color:C.muted,marginBottom:4}}>👤 {l.first_name} {l.last_name} · {l.personal_number}</p>
           <p style={{fontSize:12,color:C.muted,marginBottom:8}}>📞 {l.phone}</p>
-          {l.cadastral_code&&<p style={{fontSize:11,color:C.teal,marginBottom:8}}>🗺 {l.cadastral_code}</p>}
+          {l.cadastral_code&&(
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <p style={{fontSize:11,color:C.teal,margin:0}}>🗺 {l.cadastral_code}</p>
+              <a href={`https://maps.gov.ge/?parcel=${l.cadastral_code}`} target="_blank" rel="noreferrer"
+                style={{fontSize:10,color:C.teal,textDecoration:"none",padding:"2px 6px",border:`1px solid ${C.tealBorder}`,borderRadius:4}}>
+                maps.gov.ge →
+              </a>
+            </div>
+          )}
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>update(l.id,"approved")} style={btn({flex:1,background:C.greenDim,border:`1px solid ${C.greenBorder}`,color:C.green,fontWeight:600})}>✓ Approve</button>
             <button onClick={()=>update(l.id,"rejected")} style={btn({flex:1,background:C.redDim,border:"1px solid rgba(224,85,85,.3)",color:C.red})}>✗ Reject</button>
@@ -348,7 +391,6 @@ export default function App(){
   const [filterSale,setFilterSale]=useState("ყველა");
   const [toast,setToast]=useState(null);
 
-  // ვერიფიკაციის state — სამუშაო ვერსიიდან
   const [step,setStep]=useState(0);
   const [form,setForm]=useState({firstName:"",lastName:"",personalNumber:"",phone:""});
   const [listing,setListing]=useState({title:"",price:"",area:"",floor:"",rooms:"",region:"თბილისი",type:"ბინა",saleType:"იყიდება",description:"",cadastral:""});
@@ -392,7 +434,6 @@ export default function App(){
     catch(e){throw new Error("JSON შეცდომა: "+jsonMatch[0].substring(0,100));}
   };
 
-  // ✅ სამუშაო ვერიფიკაციის ლოგიკა — ზუსტად გადმოტანილი
   const handleReg=()=>{
     if(!form.firstName||!form.lastName||!form.personalNumber||!form.phone){setVerifyError("შეავსეთ ყველა ველი");return;}
     if(!/^\d{11}$/.test(form.personalNumber)){setVerifyError("პირადი ნომერი — 11 ციფრი");return;}
