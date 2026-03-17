@@ -72,27 +72,32 @@ export default function App() {
 
   const norm = s => (s || "").trim().toLowerCase();
 
-  const fileToBase64 = file => new Promise((res, rej) => {
-  const img = new Image();
-  const url = URL.createObjectURL(file);
-  img.onload = () => {
-    const canvas = document.createElement("canvas");
-    const max = 1200;
-    let w = img.width, h = img.height;
-    if (w > max) { h = h * max / w; w = max; }
-    canvas.width = w; canvas.height = h;
-    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-    res(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
-    URL.revokeObjectURL(url);
-  };
-  img.onerror = rej;
-  img.src = url;
-});
+  const fileToBase64 = (file) => new Promise((res, rej) => {
+    if (file.type.includes("pdf")) {
+      const r = new FileReader();
+      r.onload = () => res({ base64: r.result.split(",")[1], mediaType: "application/pdf" });
+      r.onerror = rej;
+      r.readAsDataURL(file);
+      return;
+    }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const max = 1200;
+      let w = img.width, h = img.height;
+      if (w > max) { h = Math.round(h * max / w); w = max; }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      res({ base64: canvas.toDataURL("image/jpeg", 0.85).split(",")[1], mediaType: "image/jpeg" });
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = rej;
+    img.src = url;
+  });
 
   const callClaude = async (file, prompt) => {
-    const base64 = await fileToBase64(file);
-    const mt = file.type || "image/jpeg";
-    const mediaType = mt.includes("pdf") ? "application/pdf" : mt;
+    const { base64, mediaType } = await fileToBase64(file);
     const contentItem = mediaType === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: mediaType, data: base64 } }
       : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
@@ -109,10 +114,8 @@ export default function App() {
 
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-
     const text = data.content.map(c => c.text || "").join("");
-    const clean = text.replace(/```json[\s\S]*?```|```/g, "").trim();
-    const jsonMatch = clean.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("AI-მ ვერ ამოიცნო — სცადეთ უფრო მკაფიო ფოტო");
     return JSON.parse(jsonMatch[0]);
   };
@@ -132,7 +135,8 @@ export default function App() {
     setLoading(true); setError("");
     try {
       const r = await callClaude(idFile,
-        `This is a Georgian ID card or passport. Extract the data and respond ONLY with a JSON object, no other text:\n{"isValidDocument":true,"firstName":"FIRSTNAME","lastName":"LASTNAME","personalNumber":"11DIGITS"}`
+        `This is a Georgian ID card or passport. Extract the data and respond ONLY with a JSON object, no other text:
+{"isValidDocument":true,"firstName":"FIRSTNAME_IN_LATIN","lastName":"LASTNAME_IN_LATIN","personalNumber":"11DIGITS"}`
       );
       setIdResult(r);
       if (!r.isValidDocument) setError("დოკუმენტი ვერ დადასტურდა");
@@ -145,7 +149,8 @@ export default function App() {
     setLoading(true); setError("");
     try {
       const r = await callClaude(extractFile,
-        `This is a Georgian public registry extract (საჯარო რეესტრის ამონაწერი) from napr.gov.ge. Extract owner data and respond ONLY with a JSON object:\n{"isValidDocument":true,"ownerFirstName":"FIRSTNAME","ownerLastName":"LASTNAME","ownerPersonalNumber":"11DIGITS","cadastralCode":"CODE"}`
+        `This is a Georgian public registry extract (საჯარო რეესტრის ამონაწერი) from napr.gov.ge. Extract owner data and respond ONLY with a JSON object:
+{"isValidDocument":true,"ownerFirstName":"FIRSTNAME_IN_LATIN","ownerLastName":"LASTNAME_IN_LATIN","ownerPersonalNumber":"11DIGITS","cadastralCode":"CODE"}`
       );
       setExtractResult(r);
       const ok =
@@ -186,9 +191,10 @@ export default function App() {
 
       {step === 0 && (
         <div>
-          {[["firstName","სახელი"],["lastName","გვარი"],["personalNumber","პირადი ნომერი (11 ციფრი)"],["phone","ტელეფონი (+995...)"]].map(([key, ph]) => (
+          <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 10px" }}>სახელი და გვარი ლათინურად შეიყვანეთ (პირადობის მიხედვით)</p>
+          {[["firstName","სახელი — BACHUKI"],["lastName","გვარი — KHARAISHVILI"],["personalNumber","პირადი ნომერი (11 ციფრი)"],["phone","ტელეფონი (+995...)"]].map(([key, ph]) => (
             <input key={key} placeholder={ph} value={form[key]} maxLength={key==="personalNumber"?11:undefined}
-              onChange={e => setForm(p => ({...p, [key]: e.target.value}))} style={inp} />
+              onChange={e => setForm(p => ({...p, [key]: e.target.value.toUpperCase()}))} style={inp} />
           ))}
           {error && <p style={{ color: "#dc2626", fontSize: 13, margin: "0 0 10px" }}>{error}</p>}
           <button onClick={handleReg} style={btn({ width: "100%", background: "#1e40af", color: "#fff", border: "none" })}>გაგრძელება →</button>
