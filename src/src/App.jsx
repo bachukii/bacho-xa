@@ -85,7 +85,7 @@ export default function App() {
     const contentItem = mediaType === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: mediaType, data: base64 } }
       : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
-    const res = await fetch("/api/verify", {
+    const res = await fetch("/.netlify/functions/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
