@@ -81,10 +81,12 @@ export default function App() {
 
   const callClaude = async (file, prompt) => {
     const base64 = await fileToBase64(file);
-    const mediaType = (file.type || "image/jpeg").includes("pdf") ? "application/pdf" : (file.type || "image/jpeg");
+    const mt = file.type || "image/jpeg";
+    const mediaType = mt.includes("pdf") ? "application/pdf" : mt;
     const contentItem = mediaType === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: mediaType, data: base64 } }
       : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
+
     const res = await fetch("/.netlify/functions/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -94,14 +96,15 @@ export default function App() {
         messages: [{ role: "user", content: [contentItem, { type: "text", text: prompt }] }]
       })
     });
+
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
+
     const text = data.content.map(c => c.text || "").join("");
-    try {
-      return JSON.parse(text.replace(/```json|```/g, "").trim());
-    } catch {
-      throw new Error("AI-მ ვერ ამოიცნო დოკუმენტი");
-    }
+    const clean = text.replace(/```json[\s\S]*?```|```/g, "").trim();
+    const jsonMatch = clean.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("AI-მ ვერ ამოიცნო — სცადეთ უფრო მკაფიო ფოტო");
+    return JSON.parse(jsonMatch[0]);
   };
 
   const handleReg = () => {
@@ -119,7 +122,7 @@ export default function App() {
     setLoading(true); setError("");
     try {
       const r = await callClaude(idFile,
-        `Georgian ID card or passport. Respond ONLY with valid JSON:\n{"isValidDocument":true,"firstName":"...","lastName":"...","personalNumber":"11digits"}`
+        `This is a Georgian ID card or passport. Extract the data and respond ONLY with a JSON object, no other text:\n{"isValidDocument":true,"firstName":"FIRSTNAME","lastName":"LASTNAME","personalNumber":"11DIGITS"}`
       );
       setIdResult(r);
       if (!r.isValidDocument) setError("დოკუმენტი ვერ დადასტურდა");
@@ -132,7 +135,7 @@ export default function App() {
     setLoading(true); setError("");
     try {
       const r = await callClaude(extractFile,
-        `Georgian public registry extract from napr.gov.ge. Respond ONLY with valid JSON:\n{"isValidDocument":true,"ownerFirstName":"...","ownerLastName":"...","ownerPersonalNumber":"11digits","cadastralCode":"..."}`
+        `This is a Georgian public registry extract (საჯარო რეესტრის ამონაწერი) from napr.gov.ge. Extract owner data and respond ONLY with a JSON object:\n{"isValidDocument":true,"ownerFirstName":"FIRSTNAME","ownerLastName":"LASTNAME","ownerPersonalNumber":"11DIGITS","cadastralCode":"CODE"}`
       );
       setExtractResult(r);
       const ok =
